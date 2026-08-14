@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>PII Redaction Tool</title>
+<link rel="icon" type="image/png" href="/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -40,7 +41,7 @@
     border-top: 3px solid var(--ink);
     border-bottom: 1px solid var(--ink);
     padding: 10px 0 16px;
-    margin-bottom: 48px;
+    margin-bottom: 32px;
   }
 
   .masthead-row {
@@ -89,6 +90,40 @@
     max-width: 46ch;
     line-height: 1.6;
     margin-top: 10px;
+  }
+
+  .warn-box {
+    border: 2px solid var(--stamp);
+    background: var(--stamp-dim);
+    padding: 18px 20px;
+    margin-bottom: 28px;
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .warn-icon {
+    font-size: 22px;
+    line-height: 1;
+    color: var(--stamp);
+    flex-shrink: 0;
+  }
+
+  .warn-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.02em;
+    color: var(--stamp);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .warn-text {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink);
   }
 
   .panel {
@@ -178,8 +213,9 @@
 
   .status.show { display: block; }
 
-  .status .err { color: var(--stamp); }
-  .status .ok-line { color: var(--ok); }
+  .status .err { color: var(--stamp); font-weight: 600; }
+  .status .ok-line { color: var(--ok); font-weight: 600; }
+  .status .waiting { color: var(--stamp); }
 
   .counts {
     margin-top: 14px;
@@ -259,6 +295,19 @@
     </p>
   </header>
 
+  <div class="warn-box">
+    <span class="warn-icon">⚠</span>
+    <div>
+      <div class="warn-title">First run can take up to a minute</div>
+      <div class="warn-text">
+        The backend loads an AI language model fresh whenever it's been
+        idle, before it can process anything. That setup alone can take
+        several seconds — on top of the actual scan, which takes longer
+        for bigger files. Don't refresh or close the tab, it's not stuck.
+      </div>
+    </div>
+  </div>
+
   <div class="panel">
     <div class="panel-label">01 — Upload</div>
 
@@ -283,14 +332,7 @@
     structured fields (email, phone, IP, SSN, credit card, DOB),
     spaCy NER for names/companies/addresses. See the project README for
     known false positives/negatives before relying on this for anything
-    sensitive.<br><br>
-    <strong>Why the first run is slow:</strong> this page loads instantly,
-    but the redaction itself runs on a backend function that has to load
-    an AI language model into memory before it can process anything. If
-    the server has been idle for a while, that setup happens fresh on
-    your request — usually a few seconds, sometimes up to 30–60s for a
-    long document. Once it's warmed up, repeat runs are faster, until it
-    goes idle again.
+    sensitive.
   </footer>
 
 </div>
@@ -354,16 +396,16 @@ runBtn.addEventListener('click', async () => {
 
   runBtn.disabled = true;
   runBtn.textContent = 'Processing…';
-  showStatus('Uploading file and loading the detection model — first run can take a moment.');
+  showStatus('<span class="waiting">Uploading file and loading the detection model — first run can take a moment.</span>');
 
   // the actual work happens server-side with no progress events, so this
   // just updates the message over time to explain *why* it's still going,
   // rather than leaving a static "processing" with no context.
   const t1 = setTimeout(() => {
-    showStatus('Still working — the AI model finished loading, now scanning the document for PII. Larger files take longer.');
+    showStatus('<span class="waiting">Still working — model loaded, now scanning the document for PII. Larger files take longer.</span>');
   }, 6000);
   const t2 = setTimeout(() => {
-    showStatus('Still going — this is a long document. Large or complex files can take up to a minute.');
+    showStatus('<span class="waiting">Still going — this is a long document. Large or complex files can take up to a minute.</span>');
   }, 20000);
 
   const formData = new FormData();
