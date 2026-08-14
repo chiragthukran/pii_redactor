@@ -1,55 +1,61 @@
 """
-Evaluation script.
+evaluation script.
 
-We don't have a labeled PII dataset for this document, so the approach
-taken here is: pick one dense, representative section of the actual
-document (paragraphs 490-554 - the Book Running Lead Managers /
-Registrar / Bankers contact-details block, which is the single densest
-cluster of names/emails/phones/companies/addresses in the whole
-prospectus), manually read through it and write down every real PII
-instance by hand (see ground_truth dict below), then run the actual
-detector pipeline on the same paragraphs and compare.
+we dont have a labeled PII dataset for this document, so i used one
+representative section from the actual document (paragraphs 490-554).
+this is the Book Running Lead Managers / Registrar / Bankers contact
+details section and it has the highest amount of names, emails, phone
+numbers, companies and addresses in the prospectus.
 
-This was done by going through the redact_paragraph_text() output for
-each paragraph in that range side by side with the original text and
-marking, for every predicted match: correct (TP), wrong / not real PII
-(FP). Anything present in the original text that the pipeline did not
-catch at all was marked FN.
+i manually went through this section and wrote down all the real PII
+instances in the ground_truth dict below. then i ran the actual detector
+pipeline on the same paragraphs and compared the results.
 
-TP / FP / FN counts below are the result of that manual comparison, not
-computed automatically - a script can't tell you whether "ICICI Venture
-House" is a real building name or not, that needs a human to actually
-read the sentence. This is basically the same manual process someone
-would use to build a labeled test set, just not saved as a separate
-annotation file since the sample is small enough to reason about
-directly.
+for each predicted match, i checked it against the original text and
+marked it as correct (TP) or wrong / not actual PII (FP). if something
+was present in the original but detector completely missed it, marked
+it as FN.
+
+the TP / FP / FN numbers below are from this manual checking, they are
+not automatically calculated. a script cant really know if something
+like "ICICI Venture House" is a real building name or just normal text,
+so human checking was needed here.
+
+this is basically the same way a small labeled test set can be made,
+just without creating a separate annotation file because the sample
+was small enough to check manually.
 """
 
-# paragraph range used for the manual evaluation
+# paragraph range used for manual testing
 SAMPLE_RANGE = (490, 555)
 
-# TP = predicted correctly, FP = predicted but not actually PII (or
-# wrong span), FN = real PII the pipeline did not catch at all.
-# worked out by hand, see docstring above and evaluation_report.md for
-# the walkthrough of specific misses.
+# TP = detected correctly
+# FP = detected but it was not PII, or detected wrong text
+# FN = real PII which detector completely missed
+#
+# these numbers were checked manually, see evaluation_report.md for
+# details about the misses.
 RESULTS = {
     "email":   {"tp": 19, "fp": 0,  "fn": 0},
     "phone":   {"tp": 11, "fp": 0,  "fn": 0},
-    "person":  {"tp": 9,  "fp": 5,  "fn": 5},
-    "company": {"tp": 6,  "fp": 24, "fn": 4},
-    "address": {"tp": 6,  "fp": 0,  "fn": 2},
-    # ssn / credit_card / ip / dob did not appear in this sample section
-    # at all (expected - it's a prospectus, not a form with those
-    # fields), so precision/recall can't be measured from this document.
-    # tested those detectors separately against synthetic examples
-    # instead - see README.
+    "person":  {"tp": 9, "fp": 5,  "fn": 5},
+    "company": {"tp": 6, "fp": 24, "fn": 4},
+    "address": {"tp": 6, "fp": 0,  "fn": 2},
+    # ssn / credit_card / ip / dob are not present in this sample.
+    # this is expected because it is a prospectus and not some form
+    # where these fields normally appear.
+    #
+    # because of that, precision and recall cant be measured for them
+    # from this document. i tested these detectors separately using
+    # synthetic examples, see README.
 }
-# note on company fn=4: 2 of those are cases where the company name
-# WAS actually redacted correctly, just as part of a bigger address
-# match rather than tagged "company" specifically (see
-# evaluation_report.md, paragraphs 505 / 521). counting them as fn here
-# because the category label is wrong, even though the sensitive text
-# itself did get redacted in the output.
+
+# company fn=4 needs some explanation. 2 of these cases were actually
+# redacted correctly, but the company name was caught as part of a bigger
+# address match instead of being tagged as company.
+# see evaluation_report.md paragraphs 505 / 521.
+# counting them as fn here because the category itself was not detected
+# correctly, even though the sensitive text was removed from output.
 
 
 def precision(tp, fp):
@@ -79,11 +85,11 @@ def print_report():
 
     overall_p = precision(total_tp, total_fp)
     overall_r = recall(total_tp, total_fn)
-    # accuracy here = TP / (TP + FP + FN) - there's no meaningful "true
-    # negative" count for free text span extraction (every character
-    # that isn't PII would count as one, which is meaningless), so this
-    # is the standard way overlap-based accuracy gets reported for this
-    # kind of task.
+
+    # accuracy here means TP / (TP + FP + FN). normal accuracy is not
+    # very useful for this kind of free text detection because there is
+    # no meaningful true negative count. every character which is not
+    # PII would otherwise become a negative.
     accuracy = total_tp / (total_tp + total_fp + total_fn)
 
     print()

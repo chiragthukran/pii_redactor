@@ -1,20 +1,20 @@
 """
-Keeps one fake value per real value, so if "Sarthak Malvadkar" shows up
-50 times in the document, it becomes the same fake name every time
-instead of a different random one each time - otherwise the redacted
-doc would be impossible to read consistently and the mapping would look
-like it was doing something wrong even if the individual redactions are
-technically correct.
+keeps one fake value for each real value. so if "Sarthak Malvadkar" comes
+50 times in the document, it will get the same fake name every time
+instead of getting a different random name each time.
 
-Uses the faker library to generate the replacement values so they look
-like realistic data (matches what the assignment example showed - real
-name replaced with a plausible fake name, not just "[REDACTED]").
+otherwise the redacted document can become confusing and the mapping
+can look wrong even if each replacement is technically correct.
+
+using faker to generate fake values so they look like realistic data.
+this also matches the assignment example where a real name is replaced
+with a believable fake name instead of just "[REDACTED]".
 """
 
 from faker import Faker
 
 _fake = Faker()
-Faker.seed(42)  # reproducible output between runs
+Faker.seed(42)  # keeps same output every time we run the script
 
 _maps = {
     "person": {},
@@ -55,5 +55,5 @@ def get_fake(category, real_value):
 
 
 def get_all_mappings():
-    """for the README/manual review - lets us dump what got mapped to what"""
+    """used for README/manual checking to see what was mapped to what"""
     return _maps

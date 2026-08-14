@@ -1,13 +1,13 @@
 """
-Regex based detectors.
+regex based detectors.
 
-These are for PII types that follow a fixed, predictable pattern - so a
-plain regex is enough and is actually more reliable than a ML/NER model
-for these. NER is used separately (ner_detectors.py) for the free-form
-stuff like names and addresses where there is no fixed pattern.
+these are used for PII which follow some fixed pattern, so regex works
+better here and is also more reliable than using ML/NER for these things.
+NER is used separately in ner_detectors.py for stuff like names and
+address where there is no fixed pattern.
 
-Each function returns a list of (start, end, matched_text) tuples so the
-caller can slice these out of the paragraph text and replace them.
+each function return list of (start, end, matched_text), so caller can
+take that part from paragraph and replace it.
 """
 
 import re
@@ -23,10 +23,10 @@ def find_emails(text):
 
 
 # --- Phone numbers -------------------------------------------------------
-# This document is Indian, so numbers mostly show up as "+91 20 4505 3237"
-# or "+91 9876543210" or sometimes with dashes. Kept it fairly loose on
-# purpose to catch the different spacing styles used across the document,
-# then filtered by digit count so things like page numbers don't match.
+# this document is indian, so phone numbers mostly look like
+# "+91 20 4505 3237" or "+91 9876543210". sometimes there are dashes also.
+# kept regex a little loose so different spacing formats can be matched,
+# then checking digit count so page numbers dont get picked up.
 PHONE_RE = re.compile(
     r"(\+?\d{1,3}[\s-]?)?(\(?\d{2,4}\)?[\s-]?){2,4}\d{3,4}"
 )
@@ -35,9 +35,9 @@ def find_phones(text):
     results = []
     for m in PHONE_RE.finditer(text):
         digits = re.sub(r"\D", "", m.group())
-        # a real phone number (with or without country code) has 10-13
-        # digits. shorter matches are usually page refs / section numbers,
-        # longer matches are usually CIN / registration numbers.
+        # normal phone number with or without country code should have
+        # 10-13 digits. smaller numbers are mostly page/section numbers
+        # and bigger ones can be CIN or registration numbers.
         if 10 <= len(digits) <= 13:
             results.append((m.start(), m.end(), m.group()))
     return results
@@ -66,9 +66,9 @@ def find_ssns(text):
 CC_RE = re.compile(r"\b(?:\d[ -]?){13,16}\b")
 
 def _luhn_ok(number_str):
-    """Luhn checksum - used to cut down false positives on random 13-16
-    digit numbers (this document has a lot of those - CINs, ISINs,
-    registration numbers etc, none of which are actual card numbers)."""
+    """luhn checksum. used to remove false positives from random 13-16
+    digit numbers. this document have many CIN, ISIN and registration
+    numbers, so just checking digit count will give lots of wrong matches."""
     digits = [int(d) for d in number_str if d.isdigit()]
     if not (13 <= len(digits) <= 19):
         return False
@@ -91,9 +91,9 @@ def find_credit_cards(text):
 
 
 # --- Date of birth ---------------------------------------------------------
-# dates by themselves are NOT enough - this document has hundreds of dates
-# (incorporation dates, board resolution dates, offer dates etc) that are
-# not anyone's DOB. So only flag a date if a DOB-ish word appears close by.
+# date alone is not enough because this document have many dates like
+# incorporation date, board resolution date, offer date etc. most of them
+# are not DOB. so only mark date when some DOB related word is nearby.
 DATE_RE = re.compile(
     r"\b\d{1,2}(?:st|nd|rd|th)?[\s/-]"
     r"(?:January|February|March|April|May|June|July|August|September|"

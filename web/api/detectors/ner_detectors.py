@@ -1,12 +1,12 @@
 """
-NER based detectors, for the PII types that don't have a fixed pattern:
-person names, company names, and addresses.
+ner based detectors for PII which dont have a fixed pattern,
+like person names, company names and addresses.
 
-Uses spaCy's small English model (en_core_web_sm). Went with the small
-model over the larger trf/lg ones mainly for speed - this document has
-1000+ paragraphs and we run it through NER once, so processing time adds
-up. Small model is less accurate than the transformer based one but was
-good enough after checking against a sample (see evaluation_report.md).
+using spacy small english model (en_core_web_sm). i used the small
+model instead of bigger trf/lg mainly because of speed. this document
+have 1000+ paragraphs and we run NER on it once, so processing time
+can add up. small model is less accurate than transformer one but
+after checking some samples it was good enough (see evaluation_report.md).
 """
 
 import re
@@ -15,15 +15,14 @@ from detectors.stoplist import ORG_STOPLIST, PERSON_STOPLIST, COMPANY_SUFFIXES
 
 _nlp = spacy.load("en_core_web_sm")
 
-# Indian PIN code is 6 digits - used as a signal that we are inside an
-# address, not for direct redaction on its own. this document writes
-# some of them with a space in the middle (eg "410 501") so allow that.
+# indian PIN code is 6 digits. using this mainly as a signal that we are
+# probably inside an address, not directly redacting the PIN itself.
+# some PINs in this document have a space like "410 501", so allow that.
 PIN_RE = re.compile(r"\b\d{3}\s?\d{3}\b")
 
-# lines that introduce an address block - matching on the cue phrase lets
-# us grab the surrounding text as one address rather than relying purely
-# on spacy's GPE/LOC tags, which tend to only catch the city/state part
-# and miss the street-level details.
+# words which usually comes before an address block. using these lets us
+# grab the complete address instead of only depending on spacy GPE/LOC.
+# spacy usually catches city/state but can miss street level details.
 ADDRESS_CUE_RE = re.compile(
     r"(Registered Office|Corporate Office|Registered and Corporate Office|"
     r"Address)\s*:\s*",
@@ -32,33 +31,33 @@ ADDRESS_CUE_RE = re.compile(
 
 
 def find_people(text):
-    """Returns list of (start, end, text) for PERSON entities."""
+    """returns list of (start, end, text) for PERSON entities."""
     doc = _nlp(text)
     results = []
     for ent in doc.ents:
         if ent.label_ == "PERSON" and ent.text.strip().lower() not in PERSON_STOPLIST:
-            # skip single-word matches, too many false hits from random
-            # capitalised words (headings, defined terms) being tagged
-            # PERSON by the small model
+            # skipping single word matches because there were too many
+            # false hits from random capitalized words, headings and
+            # defined terms being detected as PERSON by the small model.
             if len(ent.text.strip().split()) >= 2:
                 results.append((ent.start_char, ent.end_char, ent.text))
     return results
 
 
 def find_companies(text):
-    """Returns list of (start, end, text) for ORG entities, minus the
-    legal/regulatory stoplist terms.
+    """returns list of (start, end, text) for ORG entities after removing
+    the legal/regulatory terms from the stoplist.
 
-    RHP documents capitalize a LOT of defined legal terms (Company,
-    Board, Offer, Promoters etc) and spacy tags most of these as ORG
-    since they look like proper nouns. Stoplist above catches the ones
-    we found by testing, but that list will never be complete for a
-    document like this. So on top of the stoplist, also require the
-    match to either end in a recognisable company suffix (Limited, LLP,
-    Bank etc) or be at least 2 words AND not purely alphabetic-only
-    generic looking (crude, but cuts down a chunk of the remaining
-    noise). This trades some recall for precision - documented as a
-    known limitation in the README.
+    RHP documents have a lot of capitalized terms like Company, Board,
+    Offer, Promoters etc. spacy tags many of them as ORG because they
+    look like proper nouns.
+
+    stoplist catches the ones found during testing, but it will never
+    be complete. so also checking company suffixes like Limited, LLP,
+    Bank etc. or allowing names with atleast 2 words.
+
+    this is not perfect and can reduce recall, but it removes a good
+    amount of the false matches. mentioned this limitation in README.
     """
     doc = _nlp(text)
     results = []
@@ -68,12 +67,11 @@ def find_companies(text):
         if low in ORG_STOPLIST:
             continue
         if not any(c.isalpha() for c in raw):
-            continue  # currency symbols etc picked up as ORG sometimes
+            continue  # sometimes currency symbols etc gets picked as ORG
         if any(c.isdigit() for c in raw):
-            # dates and amounts ("May 6, 2025", "Fiscal 2025") get
-            # tagged ORG a lot by the small model. real company names
-            # in this doc never had digits in them, so this is a safe
-            # cut that removes a big chunk of the noise found in testing
+            # dates and amounts like "May 6, 2025" and "Fiscal 2025"
+            # are detected as ORG quite often by small model. company
+            # names in this document dont have digits, so skipping these.
             continue
         has_suffix = any(low.endswith(suf) or f"{suf} " in low for suf in COMPANY_SUFFIXES)
         if has_suffix or len(raw.split()) >= 2:
@@ -87,27 +85,28 @@ GEO_CUE_RE = re.compile(
 
 
 def find_addresses(text):
-    """Grabs the text after an address-introducing cue phrase, up to the
-    next semicolon or period. Works well for the "Registered Office:" /
-    "Corporate Office:" style labels used at the top of the document.
+    """finds text after an address cue like "Registered Office:" or
+    "Corporate Office:" and stops at the next semicolon or period.
 
-    Problem found during evaluation (see evaluation_report.md): most of
-    the addresses in this document (bank/registrar/legal-counsel contact
-    blocks) are NOT written with one of those cue words - they are just
-    a bare address split across a couple of lines, e.g.:
+    during evaluation (see evaluation_report.md), found that most
+    addresses in this document dont have these cue words. bank, registrar
+    and legal counsel addresses are mostly just written as normal text
+    across a few lines.
+
+    example:
         "801-804, Wing A, Building No. 3 Inspire BKC G Block"
         "Bandra East, Mumbai - 400 051 Maharashtra, India"
-    First version of this only matched the cue-labelled ones and scored
-    0% recall on this whole category when tested against the sample.
 
-    Added a fallback: if a paragraph has no cue phrase, but it does have
-    a PIN-code-shaped number together with a geography word (India /
-    Maharashtra / Mumbai / Pune), treat the whole paragraph as an
-    address. This still won't catch the earlier line of a 2-line address
-    (the "Wing A, Building No. 3" part above stays unredacted since it's
-    a separate paragraph with no PIN code in it) - that's a real
-    remaining limitation, noted in the README, not something this
-    fallback fixes. But it's a lot better than catching nothing.
+    first version only handled cue labelled addresses and got 0% recall
+    on this category in the sample.
+
+    added a fallback where if paragraph has no cue but has a PIN code
+    and a geography word like India, Maharashtra, Mumbai or Pune, the
+    whole paragraph is treated as an address.
+
+    this still wont catch the first line of a multi-line address when
+    the PIN is only in the next paragraph. that part stays unredacted.
+    this is a known limitation mentioned in README.
     """
     results = []
     matched_span = None

@@ -1,11 +1,11 @@
 """
-Flask app - single entrypoint, Vercel's Python runtime auto-detects this
-because it's at api/index.py and defines a module level `app`.
+flask app - single entrypoint. vercel's python runtime finds this because
+it is inside api/index.py and there is an app variable at module level.
 
-Same detection/redaction logic as the CLI version (redact.py in the main
-project), just wrapped to work on an uploaded file in memory instead of
-reading/writing to disk, since a serverless function doesn't have
-persistent disk storage between requests.
+same detection/redaction logic as the cli version (redact.py), just made
+to work with an uploaded file in memory instead of reading and writing
+files on disk. serverless functions dont have permanent disk storage
+between requests.
 """
 
 import os
@@ -71,18 +71,21 @@ def redact_paragraph_text(text):
 
 
 def redact_docx_stream(file_stream):
-    """Same as redact_docx() in the CLI version but works on an in-memory
-    file object instead of a path, since python-docx's Document() and
-    doc.save() both accept file-like objects, not just paths."""
+    """same as redact_docx() in the cli version, but works with a file
+    in memory instead of a file path. python-docx supports file-like
+    objects for reading and saving, so no permanent disk file is needed."""
     doc = Document(file_stream)
     total_counts = {}
 
     def process_paragraph(paragraph):
         if not paragraph.text.strip():
             return
+
         new_text, counts = redact_paragraph_text(paragraph.text)
+
         for k, v in counts.items():
             total_counts[k] = total_counts.get(k, 0) + v
+
         if new_text != paragraph.text:
             if paragraph.runs:
                 paragraph.runs[0].text = new_text
@@ -124,26 +127,31 @@ def redact_endpoint():
         input_stream = io.BytesIO(f.read())
         output_stream, counts = redact_docx_stream(input_stream)
     except Exception as e:
-        # deliberately returning the exception message - this is a small
-        # internal tool, not a public api, being able to see what broke
-        # matters more here than hiding error details
+        # keeping the actual error here because this is a small internal
+        # tool, not a public API. seeing what went wrong is more useful
+        # while debugging than hiding the error details.
         return jsonify({"error": f"failed to process file: {e}"}), 500
 
     download_name = "redacted_" + f.filename
+
     response = send_file(
         output_stream,
         as_attachment=True,
         download_name=download_name,
         mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     )
-    # counts get sent back as a header rather than a separate json call -
-    # keeps this to one request instead of two. exposed explicitly below
-    # so the frontend fetch() call is actually allowed to read it.
-    response.headers["X-Redaction-Counts"] = ",".join(f"{k}:{v}" for k, v in counts.items())
+
+    # sending counts in a response header keeps everything in one request
+    # instead of making the frontend call another endpoint. exposing this
+    # header is needed so javascript fetch() can actually read it.
+    response.headers["X-Redaction-Counts"] = ",".join(
+        f"{k}:{v}" for k, v in counts.items()
+    )
     response.headers["Access-Control-Expose-Headers"] = "X-Redaction-Counts"
+
     return response
 
 
-# local dev only - Vercel doesn't call this, it imports `app` directly
+# only used when running locally. vercel imports `app` directly.
 if __name__ == "__main__":
     app.run(debug=True, port=5000)

@@ -1,9 +1,9 @@
 """
-Main script. Reads the input docx paragraph by paragraph, runs every
-detector on each paragraph's text, resolves overlaps between detectors,
-replaces each match with a consistent fake value, and writes a new docx.
+main script. reads the input docx paragraph by paragraph, runs all the
+detectors on the text, handles overlapping matches, replaces the matches
+with fake values and then saves a new docx.
 
-Run: python3 redact.py input.docx output.docx
+run: python3 redact.py input.docx output.docx
 """
 
 import sys
@@ -16,12 +16,12 @@ from detectors.ner_detectors import find_people, find_companies, find_addresses
 from faker_map import get_fake
 
 
-# order matters here - this is priority when two matches overlap.
-# addresses first because they are the widest match and contain stuff
-# that the person/company detectors will also try to flag (see the
-# "Village Birdewadi" tagged as PERSON issue found during testing).
-# structured regex ones (email/phone/etc) are pretty much always
-# correct so they take priority over the fuzzier NER ones too.
+# order is important here. when two detectors find overlapping text, the
+# one which comes first gets priority.
+# address is kept before person/company because it can be a much bigger
+# match and person/company detectors can also detect parts of an address.
+# regex detectors are also generally more reliable, so they get priority
+# over the NER based ones.
 DETECTOR_ORDER = [
     ("email", find_emails),
     ("phone", find_phones),
@@ -36,9 +36,8 @@ DETECTOR_ORDER = [
 
 
 def resolve_overlaps(all_matches):
-    """all_matches is a list of (category, start, end, text), already in
-    priority order. keeps a match unless it overlaps with a
-    higher-priority one that was already kept."""
+    """keeps matches which dont overlap with something that already has
+    higher priority. all_matches should already be in priority order."""
     kept = []
     for category, start, end, text in all_matches:
         overlap = False
@@ -58,7 +57,9 @@ def redact_paragraph_text(text):
             all_matches.append((category, start, end, matched_text))
 
     kept = resolve_overlaps(all_matches)
-    # replace right to left so earlier offsets don't shift
+
+    # replace from right to left so replacing one value doesnt change
+    # the positions of the matches which are before it.
     kept.sort(key=lambda m: m[1], reverse=True)
 
     redacted = text
@@ -78,16 +79,21 @@ def redact_docx(input_path, output_path):
     def process_paragraph(paragraph):
         if not paragraph.text.strip():
             return
+
         new_text, counts = redact_paragraph_text(paragraph.text)
+
         for k, v in counts.items():
             total_counts[k] = total_counts.get(k, 0) + v
+
         if new_text != paragraph.text:
-            # docx splits text across multiple runs (formatting, spell
-            # check markers etc) so a straight text replace can lose
-            # formatting. simplest reliable fix: put all the new text in
-            # the first run and clear the rest. loses run-level
-            # formatting differences within a paragraph but keeps the
-            # doc readable and valid, which is the main goal here.
+            # docx can split one paragraph into multiple runs because of
+            # formatting, spell check etc. replacing the text directly can
+            # mess up the formatting.
+            #
+            # simplest reliable way here is to put the new text in the
+            # first run and clear the other runs. this can remove some
+            # run-level formatting differences, but the document stays
+            # readable and valid.
             if paragraph.runs:
                 paragraph.runs[0].text = new_text
                 for r in paragraph.runs[1:]:
@@ -98,8 +104,8 @@ def redact_docx(input_path, output_path):
     for p in doc.paragraphs:
         process_paragraph(p)
 
-    # prospectus has a lot of content inside tables too (financial
-    # statements, contact tables etc) so need to walk those separately
+    # a lot of prospectus content is inside tables too, like financial
+    # statements and contact details. so process table paragraphs also.
     for table in doc.tables:
         for row in table.rows:
             for cell in row.cells:

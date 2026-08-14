@@ -1,15 +1,15 @@
 """
-spaCy's NER tags things as PERSON / ORG pretty aggressively, and this
-document is full of legal/regulatory terms that get caught by mistake -
-things like "Companies Act", "SEBI", "RoC" etc. These are not personal
-or company info, they are just legal/statutory references, so we filter
-them out here.
+spacy NER tags PERSON / ORG pretty aggressively. this document have a lot
+of legal and regulatory terms which gets detected by mistake, like
+"Companies Act", "SEBI", "RoC" etc.
 
-This list was built by running the NER pass once, looking at what got
-flagged, and manually going through the output to see what is obviously
-not real PII. This is exactly the kind of thing the assignment wants us
-to be explicit about - it's a manual, judgement based step, not
-something a regex or model figures out on its own.
+these are not actual personal or company information, they are just
+legal/statutory references, so we remove them here.
+
+i made this list by running NER on the document, checking what was getting
+flagged and then manually going through the results and removing things
+which were clearly not PII. so this part is based on manual checking and
+judgement, model or regex cant figure this out automatically.
 """
 
 ORG_STOPLIST = {
@@ -24,20 +24,19 @@ ORG_STOPLIST = {
     "companies (amendment) act", "registered office", "corporate office",
     "registered and corporate office", "book running lead managers",
     "the book running lead managers", "anchor investors",
-    # added after running on the actual document and checking the most
-    # frequent ORG hits - these are all capitalized "defined terms" that
-    # RHPs use constantly (Company, Board, Offer etc get capitalized
-    # and treated as proper nouns throughout this style of document,
-    # spacy has no way to know these are defined terms and not real
-    # company names). listing the ones actually seen in this document
-    # rather than guessing at a generic list.
+    # added these after running on the actual document and checking the
+    # most common ORG matches. these are mostly capitalized defined terms
+    # which RHP documents use all the time. spacy sees them like proper
+    # names, so it cant really know they are not actual company names.
+    # keeping the ones actually seen in this document instead of making
+    # a generic list.
     "company", "board", "offer", "prospectus", "shareholders",
     "promoters", "promoter group", "promoter selling shareholders",
     "the promoter selling shareholders", "the promoter group",
     "this red herring prospectus", "the draft red herring prospectus",
     "the care report", "care report", "the restated financial statements",
     "restated financial statements", "results of operations",
-  "registrar", "the registrar of companies", "ind as", "statutory auditors",
+    "registrar", "the registrar of companies", "ind as", "statutory auditors",
     "the period/ fiscals", "cin", "group companies", "syndicate", "bidders",
     "non-institutional investors", "proposed capital expenditure",
     "life insurance companies and pension funds", "the upi mechanism",
@@ -49,18 +48,18 @@ ORG_STOPLIST = {
     "the anchor investor portion",
 }
 
-# a real company name in this kind of document almost always ends with
-# one of these - used as a positive signal, not a filter, see
-# ner_detectors.py for how it's combined with the stoplist above.
+# real company names in this type of document mostly ends with one of
+# these words. using this as a positive signal, not a strict filter.
+# check ner_detectors.py to see how this is combined with the stoplist.
 COMPANY_SUFFIXES = (
     "limited", "ltd", "ltd.", "llp", "inc", "inc.", "corporation", "corp",
     "bank", "co", "co.", "pvt", "pvt.", "private limited", "associates",
     "partners", "& co", "and co", "research", "consultants", "llc",
 )
 
-# words that on their own are common legal/document terms, not names -
-# spacy sometimes tags these as PERSON when they show up capitalized at
-# the start of a defined-term sentence.
+# these are common legal/document words and not actual names.
+# spacy sometimes tags them as PERSON when they are capitalized at the
+# start of a sentence or defined term, so remove them from results.
 PERSON_STOPLIST = {
     "the offer", "the company", "our company", "the board", "our board",
     "annexure", "schedule", "form", "chapter",
