@@ -284,8 +284,13 @@
     spaCy NER for names/companies/addresses. See the project README for
     known false positives/negatives before relying on this for anything
     sensitive.<br><br>
-    Large documents may take a while on first request (cold start —
-    the NER model has to load).
+    <strong>Why the first run is slow:</strong> this page loads instantly,
+    but the redaction itself runs on a backend function that has to load
+    an AI language model into memory before it can process anything. If
+    the server has been idle for a while, that setup happens fresh on
+    your request — usually a few seconds, sometimes up to 30–60s for a
+    long document. Once it's warmed up, repeat runs are faster, until it
+    goes idle again.
   </footer>
 
 </div>
@@ -349,13 +354,25 @@ runBtn.addEventListener('click', async () => {
 
   runBtn.disabled = true;
   runBtn.textContent = 'Processing…';
-  showStatus('Uploading and running detection — this can take a moment on a cold start.');
+  showStatus('Uploading file and loading the detection model — first run can take a moment.');
+
+  // the actual work happens server-side with no progress events, so this
+  // just updates the message over time to explain *why* it's still going,
+  // rather than leaving a static "processing" with no context.
+  const t1 = setTimeout(() => {
+    showStatus('Still working — the AI model finished loading, now scanning the document for PII. Larger files take longer.');
+  }, 6000);
+  const t2 = setTimeout(() => {
+    showStatus('Still going — this is a long document. Large or complex files can take up to a minute.');
+  }, 20000);
 
   const formData = new FormData();
   formData.append('file', selectedFile);
 
   try {
     const res = await fetch('/api/redact', { method: 'POST', body: formData });
+    clearTimeout(t1);
+    clearTimeout(t2);
 
     if (!res.ok) {
       let msg = 'Something went wrong.';
@@ -390,6 +407,8 @@ runBtn.addEventListener('click', async () => {
       <a class="download-link" href="${url}" download="${filename}">Download redacted .docx →</a>
     `);
   } catch (err) {
+    clearTimeout(t1);
+    clearTimeout(t2);
     showStatus(`<span class="err">Request failed: ${err.message}</span>`);
   }
 
